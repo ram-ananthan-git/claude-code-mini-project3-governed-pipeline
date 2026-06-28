@@ -1,0 +1,160 @@
+{
+  "permissions": {
+
+    "allow": [
+      "Bash(pytest*)",
+      "Bash(python3*)",
+      "Bash(pip3 install*)",
+      "Bash(pip install*)",
+      "Bash(uvicorn*)",
+
+      "Bash(git status*)",
+      "Bash(git diff*)",
+      "Bash(git log*)",
+      "Bash(git add*)",
+      "Bash(git commit*)",
+      "Bash(git tag*)",
+      "Bash(git show*)",
+      "Bash(git branch*)",
+      "Bash(git push -u origin HEAD*)",
+      "Bash(git push -u*)",
+      "Bash(git rev-parse*)",
+      "Bash(git stash*)",
+
+      "Bash(gh pr create*)",
+      "Bash(gh pr view*)",
+      "Bash(gh pr list*)",
+      "Bash(gh auth status*)",
+
+      "Bash(find . *)",
+      "Bash(grep *)",
+      "Bash(ls*)",
+      "Bash(wc *)",
+      "Bash(cat *)",
+      "Bash(echo *)",
+      "Bash(mkdir -p *)",
+      "Bash(chmod +x *)",
+      "Bash(cp *)",
+      "Bash(mv *)",
+      "Bash(touch *)",
+      "Bash(head *)",
+      "Bash(tail *)",
+      "Bash(sort *)",
+      "Bash(uniq *)",
+      "Bash(date*)",
+      "Bash(pwd*)",
+      "Bash(which *)",
+      "Bash(python3 -m py_compile *)",
+      "Bash(bash -n *)"
+    ],
+
+    "deny": [
+      "Bash(rm -rf /*)",
+      "Bash(rm -rf ~*)",
+      "Bash(rm -rf ..*)",
+      "Bash(rm -rf .git*)",
+
+      "Bash(curl * | bash*)",
+      "Bash(curl * | sh*)",
+      "Bash(curl * | python*)",
+      "Bash(wget * | bash*)",
+      "Bash(wget * | sh*)",
+
+      "Bash(git push --force*)",
+      "Bash(git push -f *)",
+
+      "Bash(chmod 777*)",
+      "Bash(chmod a+w*)",
+      "Bash(chmod o+w*)",
+
+      "Bash(sudo rm*)",
+      "Bash(sudo chmod*)",
+      "Bash(sudo chown*)",
+
+      "Bash(mkfs*)",
+      "Bash(fdisk*)",
+      "Bash(parted*)",
+      "Bash(dd if=* of=/dev/*)",
+
+      "Bash(DROP TABLE*)",
+      "Bash(DROP DATABASE*)",
+      "Bash(TRUNCATE TABLE*)"
+    ]
+  },
+
+  "hooks": {
+
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash .claude/hooks/log-prompt.sh"
+          }
+        ]
+      }
+    ],
+
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 .claude/hooks/validate-bash.py"
+          }
+        ]
+      },
+      {
+        "matcher": "Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 .claude/hooks/check-secrets.py"
+          },
+          {
+            "type": "command",
+            "command": "bash .claude/hooks/scope-guard.sh"
+          }
+        ]
+      },
+      {
+        "matcher": "Edit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 .claude/hooks/check-secrets.py"
+          },
+          {
+            "type": "command",
+            "command": "bash .claude/hooks/scope-guard.sh"
+          }
+        ]
+      }
+    ],
+
+    "PostToolUse": [
+      {
+        "matcher": ".*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash .claude/hooks/audit-log.sh"
+          }
+        ]
+      }
+    ],
+
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash .claude/hooks/session-summary.sh"
+          }
+        ]
+      }
+    ]
+
+  }
+}
