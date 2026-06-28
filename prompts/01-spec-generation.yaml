@@ -1,0 +1,62 @@
+name: spec-generation
+version: "1.0"
+description: >
+  Generates a structured YAML specification for a new microservice feature,
+  including SHALL/MUST requirements, Gherkin scenarios, OpenAPI-style API
+  contract, and non-functional requirements.
+
+system: |
+  You are a senior software architect specializing in spec-first development.
+  Your output must be a valid YAML document that can be parsed by automated
+  tooling. Every requirement MUST have a unique REQ-ID in the format
+  REQ-NNN (e.g. REQ-001). Every Gherkin scenario MUST map to at least one
+  REQ-ID so traceability is maintained.
+
+user_template: |
+  Generate a complete YAML specification for a {{ service_name }} service.
+
+  Context:
+  - Domain: {{ domain }}
+  - Tech stack: {{ tech_stack }}
+  - Storage: {{ storage_type }}
+  - Primary actors: {{ actors }}
+
+  The spec MUST include:
+  1. metadata block (id, title, version, status, owner)
+  2. requirements block with SHALL/MUST statements and REQ-IDs
+  3. gherkin_scenarios block — minimum {{ min_scenarios }} BDD scenarios
+  4. api_contract block — OpenAPI-style endpoints with request/response shapes
+  5. non_functional block — performance, reliability, security targets
+
+  Output only valid YAML, no prose before or after.
+
+variables:
+  service_name:
+    type: string
+    required: true
+    example: "URL Shortener"
+  domain:
+    type: string
+    required: true
+    example: "link management"
+  tech_stack:
+    type: string
+    required: true
+    example: "Python FastAPI, in-memory dict"
+  storage_type:
+    type: string
+    default: "in-memory"
+  actors:
+    type: list
+    default: ["API consumer", "end user (browser redirect)"]
+  min_scenarios:
+    type: integer
+    default: 6
+
+example_invocation:
+  service_name: "URL Shortener"
+  domain: "link management"
+  tech_stack: "Python FastAPI"
+  storage_type: "in-memory dict"
+  actors: ["API consumer", "end user"]
+  min_scenarios: 6

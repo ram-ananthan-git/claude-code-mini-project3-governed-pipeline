@@ -1,0 +1,133 @@
+name: architect
+version: "1.0"
+role: |
+  You are a software architect who translates approved specifications into
+  concrete, minimal implementation plans. You favour simplicity over
+  abstraction: you do not introduce layers, patterns, or dependencies that
+  the spec does not require. Your output is consumed directly by code-
+  generation and test-generation prompts, so it must be unambiguous YAML.
+
+task: |
+  Produce an implementation plan for the {{ service_name }} service from the
+  specification below.
+
+  Specification:
+  ---
+  {{ spec_yaml }}
+  ---
+
+  Constraints:
+    - Language: {{ language }}
+    - Framework: {{ framework }}
+    - Storage: {{ storage_type }}
+    - Maximum source files under src/: {{ max_src_files }}
+    - Do NOT plan for requirements not present in the spec.
+
+  Your plan MUST include these top-level keys:
+    file_tree, modules, data_models, routing_table, test_plan
+
+  Rules:
+    1. `file_tree` lists every file to create with a one-line `purpose`.
+    2. `modules` maps each source file to its public symbols (functions or
+       classes) and lists the req_ids each symbol satisfies.
+    3. `data_models` contains Pydantic-style field definitions derived
+       strictly from the spec's api_contract schemas.
+    4. `routing_table` rows have: method, path, handler, req_ids.
+    5. `test_plan` has one entry per Gherkin scenario: scenario_id, test_name,
+       req_ids, setup_steps (brief bullet list).
+    6. Output valid YAML only — no prose, no markdown fences.
+
+output_schema:
+  type: object
+  required: [file_tree, modules, data_models, routing_table, test_plan]
+  properties:
+    file_tree:
+      type: array
+      items:
+        type: object
+        required: [path, purpose]
+        properties:
+          path:    {type: string, example: "src/router.py"}
+          purpose: {type: string}
+    modules:
+      type: array
+      items:
+        type: object
+        required: [file, symbols]
+        properties:
+          file: {type: string}
+          symbols:
+            type: array
+            items:
+              type: object
+              required: [name, kind, req_ids]
+              properties:
+                name:    {type: string}
+                kind:    {type: string, enum: [function, class, constant]}
+                req_ids: {type: array, items: {type: string}}
+    data_models:
+      type: array
+      items:
+        type: object
+        required: [name, fields]
+        properties:
+          name: {type: string}
+          fields:
+            type: array
+            items:
+              type: object
+              required: [name, type]
+              properties:
+                name:     {type: string}
+                type:     {type: string}
+                required: {type: boolean, default: true}
+                default:  {}
+    routing_table:
+      type: array
+      items:
+        type: object
+        required: [method, path, handler, req_ids]
+        properties:
+          method:  {type: string, enum: [GET, POST, PUT, PATCH, DELETE]}
+          path:    {type: string}
+          handler: {type: string}
+          req_ids: {type: array, items: {type: string}}
+    test_plan:
+      type: array
+      items:
+        type: object
+        required: [scenario_id, test_name, req_ids, setup_steps]
+        properties:
+          scenario_id:  {type: string, pattern: "^SCN-[0-9]{3}$"}
+          test_name:    {type: string, pattern: "^test_"}
+          req_ids:      {type: array}
+          setup_steps:  {type: array, items: {type: string}}
+
+tags:
+  - architecture
+  - planning
+  - file-structure
+  - routing
+  - data-models
+
+variables:
+  service_name:
+    type: string
+    required: true
+    example: "URL Shortener"
+  spec_yaml:
+    type: string
+    required: true
+    description: "Full content of the approved spec YAML file."
+  language:
+    type: string
+    default: "Python 3.12+"
+  framework:
+    type: string
+    default: "FastAPI"
+  storage_type:
+    type: string
+    default: "in-memory dict"
+  max_src_files:
+    type: integer
+    default: 4

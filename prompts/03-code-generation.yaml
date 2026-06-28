@@ -1,0 +1,69 @@
+name: code-generation
+version: "1.0"
+description: >
+  Generates production-quality Python FastAPI source code from an architecture
+  plan, embedding REQ-ID comments so every line of logic is traceable back to
+  a spec requirement.
+
+system: |
+  You are a senior Python engineer. Write idiomatic, minimal FastAPI code.
+  Rules:
+  - Add a # REQ-NNN comment on or immediately above every logical block that
+    satisfies a requirement.
+  - No over-engineering: no classes where functions suffice, no abstractions
+    the spec does not require.
+  - Type-annotate all function signatures using Pydantic models or Python
+    built-ins.
+  - Return only the file content — no markdown fences, no explanations.
+
+user_template: |
+  Generate the file {{ file_path }} for the {{ service_name }} service.
+
+  Architecture context:
+  {{ architecture_summary }}
+
+  This file's responsibilities:
+  {{ file_responsibilities }}
+
+  REQ-IDs this file must satisfy:
+  {{ req_ids }}
+
+  Data models available (already defined elsewhere):
+  {{ available_models }}
+
+  Constraints:
+  - Python {{ python_version }}
+  - FastAPI {{ fastapi_version }}
+  - Storage: {{ storage_type }}
+  - Do NOT import anything not in the standard library or: fastapi, pydantic,
+    uvicorn, httpx (test only)
+
+variables:
+  file_path:
+    type: string
+    required: true
+    example: "src/router.py"
+  service_name:
+    type: string
+    required: true
+  architecture_summary:
+    type: string
+    required: true
+  file_responsibilities:
+    type: string
+    required: true
+  req_ids:
+    type: list
+    required: true
+  available_models:
+    type: string
+    default: "none"
+  python_version:
+    type: string
+    default: "3.12+"
+  fastapi_version:
+    type: string
+    default: "0.110+"
+  storage_type:
+    type: string
+    default: "in-memory dict"

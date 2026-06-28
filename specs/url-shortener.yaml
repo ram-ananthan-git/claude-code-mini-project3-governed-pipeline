@@ -1,0 +1,468 @@
+# Generated from prompts/spec-writer.yaml
+# Variables applied:
+#   service_name: "URL Shortener Service"
+#   service_description: >
+#     Maps long HTTP/HTTPS URLs to short 8-character alphanumeric codes.
+#     Resolves codes to original URLs via HTTP redirect. Provides CRUD
+#     management and basic analytics (click counting).
+#   tech_stack: "Python FastAPI, in-memory dict"
+#   storage_type: "in-memory"
+#   actors: ["API consumer", "end user (browser redirect)"]
+#   min_scenarios: 6
+
+metadata:
+  id: SVC-URL-SHORTENER
+  title: URL Shortener Service
+  version: "1.0.0"
+  status: approved
+  owner: engineering
+  created: "2026-06-27"
+  description: >
+    Maps long HTTP/HTTPS URLs to short 8-character alphanumeric codes.
+    Resolves codes to original URLs via HTTP 307 redirect. Provides
+    CRUD management, click-count analytics, and a health probe endpoint.
+    All state is held in-memory; no external storage dependency.
+
+# ─────────────────────────────────────────────────────────────
+# Requirements
+# ─────────────────────────────────────────────────────────────
+requirements:
+
+  # --- Core shortening ---
+  - id: REQ-SHORT-001
+    priority: MUST
+    statement: >
+      The service SHALL expose a POST /shorten endpoint that accepts a JSON
+      body with a single "url" field containing a valid HTTP or HTTPS URL,
+      and SHALL return a JSON response with short_code, short_url,
+      original_url, and clicks fields.
+
+  - id: REQ-SHORT-002
+    priority: MUST
+    statement: >
+      The service SHALL generate short codes consisting solely of URL-safe
+      alphanumeric characters (a–z, A–Z, 0–9) with a fixed length of
+      exactly 8 characters.
+
+  - id: REQ-SHORT-003
+    priority: MUST
+    statement: >
+      Short codes SHALL be unique across all active mappings. The code
+      generation routine MUST retry if a collision is detected.
+
+  # --- Resolution / redirect ---
+  - id: REQ-SHORT-004
+    priority: MUST
+    statement: >
+      The service SHALL expose a GET /{code} endpoint that resolves a
+      short code to its original URL and responds with HTTP 307
+      (Temporary Redirect), setting the Location header to the original URL.
+
+  - id: REQ-SHORT-005
+    priority: MUST
+    statement: >
+      When GET /{code} is called with a code that does not exist in the
+      store, the service SHALL respond with HTTP 404 and a JSON body of
+      {"detail": "Short code not found"}.
+
+  # --- Click analytics ---
+  - id: REQ-SHORT-006
+    priority: MUST
+    statement: >
+      The service SHALL increment a per-link click counter each time a
+      short code is successfully resolved via GET /{code}. The counter
+      SHALL be returned in the clicks field of every link response.
+
+  # --- Management ---
+  - id: REQ-SHORT-007
+    priority: MUST
+    statement: >
+      The service SHALL expose a DELETE /{code} endpoint that removes the
+      mapping for the given code and responds with HTTP 204 (No Content)
+      on success.
+
+  - id: REQ-SHORT-008
+    priority: MUST
+    statement: >
+      When DELETE /{code} is called for a code that does not exist, the
+      service SHALL respond with HTTP 404 and a JSON error body.
+
+  - id: REQ-SHORT-009
+    priority: MUST
+    statement: >
+      The service SHALL expose a GET /links endpoint that returns HTTP 200
+      and a JSON array of all active mappings. Each element MUST contain
+      short_code, original_url, short_url, and clicks.
+
+  # --- Idempotency ---
+  - id: REQ-SHORT-010
+    priority: SHOULD
+    statement: >
+      If POST /shorten is called with a URL that already has an active
+      mapping, the service SHOULD return the existing short code with
+      HTTP 200 rather than creating a duplicate entry.
+
+  # --- Health ---
+  - id: REQ-SHORT-011
+    priority: MUST
+    statement: >
+      The service SHALL expose GET /healthz, which MUST return HTTP 200
+      and the JSON body {"status": "ok"} whenever the service is able to
+      accept requests.
+
+  # --- Input validation ---
+  - id: REQ-SHORT-012
+    priority: MUST
+    statement: >
+      The service SHALL reject any POST /shorten request whose "url" field
+      is not a syntactically valid HTTP or HTTPS URI, responding with
+      HTTP 422 and a structured validation error body.
+
+  - id: REQ-SHORT-013
+    priority: MUST
+    statement: >
+      The service SHALL reject URLs whose scheme is not "http" or "https"
+      (e.g. ftp, javascript, data, file). Such requests MUST receive
+      HTTP 422 with a message identifying the invalid scheme.
+
+  - id: REQ-SHORT-014
+    priority: MUST
+    statement: >
+      The service SHALL reject POST /shorten requests where the "url" field
+      exceeds 2048 characters, responding with HTTP 422.
+
+  # --- Rate limiting ---
+  - id: REQ-SHORT-015
+    priority: MUST
+    statement: >
+      The service SHALL enforce a rate limit of at most 60 POST /shorten
+      requests per IP address per 60-second sliding window. Requests that
+      exceed this limit SHALL receive HTTP 429 (Too Many Requests) with a
+      Retry-After header indicating the seconds until the window resets.
+
+# ─────────────────────────────────────────────────────────────
+# Gherkin Scenarios
+# ─────────────────────────────────────────────────────────────
+gherkin_scenarios:
+
+  - id: SCN-001
+    title: Shorten a valid HTTPS URL
+    req_ids: [REQ-SHORT-001, REQ-SHORT-002, REQ-SHORT-003]
+    scenario: |
+      Given the service has no existing mappings
+      When I POST /shorten with body {"url": "https://example.com/some/very/long/path?q=1"}
+      Then the response status is 201
+      And the response body contains "short_code" of exactly 8 alphanumeric characters
+      And the response body "short_url" contains the short_code as a path segment
+      And the response body "original_url" equals "https://example.com/some/very/long/path?q=1"
+      And the response body "clicks" equals 0
+
+  - id: SCN-002
+    title: Resolve an existing short code redirects to original URL
+    req_ids: [REQ-SHORT-004, REQ-SHORT-006]
+    scenario: |
+      Given a mapping exists for code "abc12345" pointing to "https://example.com"
+      When I GET /abc12345 without following redirects
+      Then the response status is 307
+      And the Location header equals "https://example.com"
+      And a subsequent GET /links shows "clicks" is 1 for code "abc12345"
+
+  - id: SCN-003
+    title: Resolve unknown short code returns 404
+    req_ids: [REQ-SHORT-005]
+    scenario: |
+      Given the service store contains no mapping for code "xxxxxxxx"
+      When I GET /xxxxxxxx
+      Then the response status is 404
+      And the response body equals {"detail": "Short code not found"}
+
+  - id: SCN-004
+    title: Shorten with invalid URL returns 422
+    req_ids: [REQ-SHORT-012, REQ-SHORT-013]
+    scenario: |
+      Given the service is running
+      When I POST /shorten with each of the following urls:
+        | url                       |
+        | not-a-url                 |
+        | ftp://files.example.com   |
+        | javascript:alert(1)       |
+        | data:text/html,hello      |
+        | http://                   |
+        | (empty string)            |
+      Then every response status is 422
+      And every response body contains a "detail" field describing the validation error
+
+  - id: SCN-005
+    title: Delete an existing short code removes it
+    req_ids: [REQ-SHORT-007]
+    scenario: |
+      Given a mapping exists for code "del12345" pointing to "https://delete-me.com"
+      When I DELETE /del12345
+      Then the response status is 204
+      And a subsequent GET /del12345 returns status 404
+
+  - id: SCN-006
+    title: Delete a non-existent short code returns 404
+    req_ids: [REQ-SHORT-008]
+    scenario: |
+      Given no mapping exists for code "missing1"
+      When I DELETE /missing1
+      Then the response status is 404
+      And the response body contains {"detail": "Short code not found"}
+
+  - id: SCN-007
+    title: List all links returns every active mapping
+    req_ids: [REQ-SHORT-009]
+    scenario: |
+      Given mappings exist for "https://a.com" and "https://b.com"
+      When I GET /links
+      Then the response status is 200
+      And the response body is a JSON array with exactly 2 entries
+      And each entry contains "short_code", "original_url", "short_url", and "clicks"
+
+  - id: SCN-008
+    title: Shorten the same URL twice returns the existing code
+    req_ids: [REQ-SHORT-010]
+    scenario: |
+      Given a mapping already exists for "https://example.com" with code "exist123"
+      When I POST /shorten with body {"url": "https://example.com"}
+      Then the response status is 200
+      And the response body "short_code" equals "exist123"
+      And GET /links returns exactly 1 entry
+
+  - id: SCN-009
+    title: Health check returns ok
+    req_ids: [REQ-SHORT-011]
+    scenario: |
+      Given the service is running
+      When I GET /healthz
+      Then the response status is 200
+      And the response body equals {"status": "ok"}
+
+  - id: SCN-010
+    title: URL exceeding 2048 characters is rejected
+    req_ids: [REQ-SHORT-014]
+    scenario: |
+      Given the service is running
+      When I POST /shorten with a "url" field that is 2049 characters long
+      Then the response status is 422
+      And the response body contains a detail mentioning URL length
+
+  - id: SCN-011
+    title: Rate limit exceeded returns 429 with Retry-After
+    req_ids: [REQ-SHORT-015]
+    scenario: |
+      Given a single IP address sends 60 POST /shorten requests within 60 seconds
+      When that IP sends a 61st POST /shorten request
+      Then the response status is 429
+      And the response headers contain "Retry-After" with a positive integer value
+
+# ─────────────────────────────────────────────────────────────
+# API Contract
+# ─────────────────────────────────────────────────────────────
+api_contract:
+  base_path: ""
+  content_type: application/json
+  auth: none
+
+  endpoints:
+
+    - method: POST
+      path: /shorten
+      summary: Create a short URL mapping
+      req_ids: [REQ-SHORT-001, REQ-SHORT-002, REQ-SHORT-003, REQ-SHORT-010,
+                REQ-SHORT-012, REQ-SHORT-013, REQ-SHORT-014, REQ-SHORT-015]
+      request_body:
+        required: true
+        content_type: application/json
+        schema:
+          type: object
+          required: [url]
+          properties:
+            url:
+              type: string
+              format: uri
+              maxLength: 2048
+              example: "https://www.example.com/very/long/path?foo=bar&baz=qux"
+      responses:
+        "201":
+          description: Short URL created successfully
+          schema:
+            type: object
+            required: [short_code, short_url, original_url, clicks]
+            properties:
+              short_code:   {type: string, minLength: 8, maxLength: 8, pattern: "^[a-zA-Z0-9]{8}$"}
+              short_url:    {type: string, format: uri}
+              original_url: {type: string, format: uri}
+              clicks:       {type: integer, minimum: 0}
+        "200":
+          description: URL already exists — existing mapping returned (idempotent)
+          schema: {$ref: "#/api_contract/endpoints/0/responses/201/schema"}
+        "422":
+          description: Request validation failed — invalid or disallowed URL
+          schema:
+            type: object
+            required: [detail]
+            properties:
+              detail:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    loc:  {type: array}
+                    msg:  {type: string}
+                    type: {type: string}
+        "429":
+          description: Rate limit exceeded
+          headers:
+            Retry-After:
+              type: integer
+              description: Seconds until the rate-limit window resets
+          schema:
+            type: object
+            properties:
+              detail: {type: string, example: "Rate limit exceeded. Try again in 42 seconds."}
+
+    - method: GET
+      path: /{code}
+      summary: Resolve a short code and redirect
+      req_ids: [REQ-SHORT-004, REQ-SHORT-005, REQ-SHORT-006]
+      path_params:
+        - name: code
+          type: string
+          description: "8-character alphanumeric short code"
+      responses:
+        "307":
+          description: Temporary redirect to the original URL
+          headers:
+            Location:
+              type: string
+              format: uri
+              description: The original long URL
+        "404":
+          description: Short code not found
+          schema:
+            type: object
+            required: [detail]
+            properties:
+              detail: {type: string, example: "Short code not found"}
+
+    - method: DELETE
+      path: /{code}
+      summary: Delete a short URL mapping
+      req_ids: [REQ-SHORT-007, REQ-SHORT-008]
+      path_params:
+        - name: code
+          type: string
+      responses:
+        "204":
+          description: Mapping deleted; no response body
+        "404":
+          description: Short code not found
+          schema:
+            type: object
+            required: [detail]
+            properties:
+              detail: {type: string, example: "Short code not found"}
+
+    - method: GET
+      path: /links
+      summary: List all active short URL mappings
+      req_ids: [REQ-SHORT-009]
+      responses:
+        "200":
+          description: Array of all active mappings
+          schema:
+            type: array
+            items:
+              type: object
+              required: [short_code, original_url, short_url, clicks]
+              properties:
+                short_code:   {type: string, minLength: 8, maxLength: 8}
+                original_url: {type: string, format: uri}
+                short_url:    {type: string, format: uri}
+                clicks:       {type: integer, minimum: 0}
+
+    - method: GET
+      path: /healthz
+      summary: Liveness health check
+      req_ids: [REQ-SHORT-011]
+      responses:
+        "200":
+          description: Service is healthy
+          schema:
+            type: object
+            required: [status]
+            properties:
+              status: {type: string, enum: [ok]}
+
+# ─────────────────────────────────────────────────────────────
+# Non-Functional Requirements
+# ─────────────────────────────────────────────────────────────
+non_functional:
+
+  performance:
+    - id: NFR-PERF-001
+      statement: >
+        POST /shorten SHALL respond within 50 ms at p99 under a load of
+        100 concurrent requests on commodity hardware (2-core, 4 GB RAM).
+    - id: NFR-PERF-002
+      statement: >
+        GET /{code} SHALL respond within 10 ms at p99 under the same load
+        conditions; the in-memory lookup MUST not perform any I/O.
+    - id: NFR-PERF-003
+      statement: >
+        The service SHALL handle at least 1 000 active short-code mappings
+        without measurable degradation in lookup latency.
+
+  security:
+    - id: NFR-SEC-001
+      statement: >
+        The service SHALL only accept "http" and "https" URL schemes in
+        POST /shorten. All other schemes (ftp, javascript, data, file, etc.)
+        MUST be rejected at the validation layer before any store operation.
+    - id: NFR-SEC-002
+      statement: >
+        Short codes SHALL be generated with sufficient entropy that brute-force
+        enumeration of all active codes is computationally impractical within
+        a single session. The 8-character alphanumeric space provides
+        62^8 ≈ 2.18 × 10^14 possible values.
+    - id: NFR-SEC-003
+      statement: >
+        The service SHALL NOT follow or pre-fetch the destination URL at
+        creation time. The redirect target is stored and returned as-is;
+        the service does not validate the liveness or safety of the destination.
+
+  validation:
+    - id: NFR-VAL-001
+      statement: >
+        Every POST /shorten request body MUST be validated against the declared
+        JSON schema before any business logic executes. Missing or extra fields
+        MUST produce a structured 422 response conforming to the api_contract
+        error schema.
+    - id: NFR-VAL-002
+      statement: >
+        The "url" field MUST pass both a scheme-allowlist check (http/https)
+        and a structural URI parse. Either failure MUST produce a 422 with a
+        descriptive "msg" field identifying which check failed.
+    - id: NFR-VAL-003
+      statement: >
+        The "url" field SHALL be rejected if its length exceeds 2048 characters,
+        consistent with common browser URL-length limits.
+
+  rate_limiting:
+    - id: NFR-RL-001
+      statement: >
+        POST /shorten SHALL be rate-limited to 60 requests per IP per 60-second
+        sliding window. The limit MUST be enforced in-process using a per-IP
+        counter; no external service is required.
+    - id: NFR-RL-002
+      statement: >
+        When a request is rejected by the rate limiter the response MUST include
+        a "Retry-After" HTTP header whose value is the integer number of seconds
+        remaining until the client's window resets.
+    - id: NFR-RL-003
+      statement: >
+        Rate-limit counters SHALL be keyed by the client's IP address as seen
+        by the application layer. The header X-Forwarded-For SHOULD be
+        respected when the service is deployed behind a trusted reverse proxy.

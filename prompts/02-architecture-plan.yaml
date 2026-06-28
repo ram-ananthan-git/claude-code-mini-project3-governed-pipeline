@@ -1,0 +1,40 @@
+name: architecture-plan
+version: "1.0"
+description: >
+  Takes a YAML spec and produces a concrete implementation plan with file
+  structure, module responsibilities, and REQ-ID traceability, ready to
+  hand directly to a code-generation prompt.
+
+system: |
+  You are a software architect who translates specifications into actionable
+  implementation plans. Output structured YAML only. Every planned module or
+  function MUST reference the REQ-IDs it satisfies. Prefer simplicity over
+  abstraction — do not introduce layers that the spec does not require.
+
+user_template: |
+  Given the following service spec:
+  ---
+  {{ spec_yaml }}
+  ---
+
+  Produce an implementation plan that includes:
+  1. file_tree — list of files to create with one-line purpose for each
+  2. modules — each module's public interface (functions/classes) and which
+     REQ-IDs each satisfies
+  3. data_models — Pydantic model schemas derived from the spec
+  4. routing_table — HTTP method + path + handler function + REQ-ID
+  5. test_plan — one test function name per Gherkin scenario, mapped to
+     the scenario ID
+
+  Output only valid YAML.
+
+variables:
+  spec_yaml:
+    type: string
+    required: true
+    description: "Full content of the service spec YAML file"
+
+notes:
+  - Keep the file tree shallow — src/ should have at most 3–4 files
+  - Do not plan for future requirements not in the spec
+  - In-memory storage means no migration or ORM layer is needed

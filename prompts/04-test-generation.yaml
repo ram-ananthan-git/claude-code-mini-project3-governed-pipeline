@@ -1,0 +1,59 @@
+name: test-generation
+version: "1.0"
+description: >
+  Generates pytest test cases from Gherkin scenarios, with one test function
+  per scenario and assertions tied to spec requirements. Uses FastAPI's
+  TestClient for integration-style tests.
+
+system: |
+  You are a QA engineer writing pytest tests for a FastAPI service.
+  Rules:
+  - One test function per Gherkin scenario; name the function
+    test_<scenario_id_snake_case>.
+  - Begin each test function with a comment citing the scenario ID and the
+    REQ-IDs it covers, e.g.: # SCN-001 | REQ-001, REQ-003
+  - Use FastAPI TestClient (from fastapi.testclient import TestClient).
+  - Tests must be self-contained: set up state, exercise the endpoint,
+    assert the result, and clean up if needed.
+  - Do not mock internal modules — test through the HTTP layer.
+  - Return only the file content, no markdown fences.
+
+user_template: |
+  Generate {{ output_file }} for the {{ service_name }} service.
+
+  Gherkin scenarios to cover:
+  {{ scenarios_yaml }}
+
+  API base path: {{ base_path }}
+  App import path: {{ app_import }}
+
+  Additional constraints:
+  {{ constraints }}
+
+variables:
+  output_file:
+    type: string
+    required: true
+    example: "tests/test_api.py"
+  service_name:
+    type: string
+    required: true
+  scenarios_yaml:
+    type: string
+    required: true
+    description: "YAML block of Gherkin scenarios from the spec"
+  base_path:
+    type: string
+    default: ""
+  app_import:
+    type: string
+    default: "from src.main import app"
+  constraints:
+    type: string
+    default: "None"
+
+notes:
+  - Parametrize tests with pytest.mark.parametrize where a scenario has
+    multiple example rows.
+  - For redirect tests, set allow_redirects=False on the TestClient call
+    and assert the 307 status and Location header.
